@@ -144,16 +144,16 @@ func (c *rateController) increase(now time.Time) int {
 		alpha := 0.5 * math.Min(float64(now.Sub(c.lastUpdate).Milliseconds())/float64(responseTime.Milliseconds()), 1.0)
 		increase := int(math.Max(1000.0, alpha*expectedPacketSizeBits))
 		c.lastUpdate = now
-		return int(math.Min(float64(c.target+increase), 1.5*float64(c.latestReceivedRate)))
+		return int(math.Min(float64(c.target+increase), 1.5*float64(c.target)))
 	}
 	eta := math.Pow(1.08, math.Min(float64(now.Sub(c.lastUpdate).Milliseconds())/1000, 1.0))
 	c.lastUpdate = now
 
 	rate := int(eta * float64(c.target))
 
-	// maximum increase to 1.5 * received rate
-	received := int(1.5 * float64(c.latestReceivedRate))
-	if rate > received && received > c.target {
+	// maximum increase to 1.5 * rate
+	received := int(1.5 * float64(c.target))
+	if rate > received {
 		return received
 	}
 
@@ -164,7 +164,7 @@ func (c *rateController) increase(now time.Time) int {
 }
 
 func (c *rateController) decrease() int {
-	target := int(beta * float64(c.latestReceivedRate))
+	target := int(beta * float64(c.target))
 	c.latestDecreaseRate.update(float64(c.latestReceivedRate))
 	c.lastUpdate = c.now()
 	return target
