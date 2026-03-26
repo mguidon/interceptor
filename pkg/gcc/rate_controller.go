@@ -4,6 +4,7 @@
 package gcc
 
 import (
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -138,8 +139,8 @@ func (c *rateController) onDelayStats(ds DelayStats) {
 
 func (c *rateController) increase(now time.Time) int {
 	if c.latestDecreaseRate.average > 0 &&
-		float64(c.latestReceivedRate) > c.latestDecreaseRate.average-3*c.latestDecreaseRate.stdDeviation &&
-		float64(c.latestReceivedRate) < c.latestDecreaseRate.average+3*c.latestDecreaseRate.stdDeviation {
+		float64(c.target) > c.latestDecreaseRate.average-3*c.latestDecreaseRate.stdDeviation &&
+		float64(c.target) < c.latestDecreaseRate.average+3*c.latestDecreaseRate.stdDeviation {
 		bitsPerFrame := float64(c.target) / 30.0
 		packetsPerFrame := math.Ceil(bitsPerFrame / (1200 * 8))
 		expectedPacketSizeBits := bitsPerFrame / packetsPerFrame
@@ -149,10 +150,17 @@ func (c *rateController) increase(now time.Time) int {
 		increase := int(math.Max(1000.0, alpha*expectedPacketSizeBits))
 		c.lastUpdate = now
 
+		log.Printf("[GCC] ADDITIVE increase: target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f Mbps, decStd=%.2f Mbps, step=+%d bps",
+			float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
+			c.latestDecreaseRate.average/1e6, c.latestDecreaseRate.stdDeviation/1e6, increase)
+
 		return int(math.Min(float64(c.target+increase), 1.5*float64(c.target)))
 	}
 	eta := math.Pow(1.08, math.Min(float64(now.Sub(c.lastUpdate).Milliseconds())/1000, 1.0))
 	c.lastUpdate = now
+
+	log.Printf("[GCC] EXPONENTIAL increase: target=%.2f Mbps, recvRate=%.2f Mbps, eta=%.4f, decAvg=%.2f Mbps",
+		float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6, eta, c.latestDecreaseRate.average/1e6)
 
 	rate := int(eta * float64(c.target))
 
@@ -171,6 +179,8 @@ func (c *rateController) increase(now time.Time) int {
 
 func (c *rateController) decrease() int {
 	target := int(beta * float64(c.latestReceivedRate))
+	log.Printf("[GCC] DECREASE: recvRate=%.2f Mbps -> target=%.2f Mbps (beta=%.2f), decAvg=%.2f Mbps",
+		float64(c.latestReceivedRate)/1e6, float64(target)/1e6, beta, c.latestDecreaseRate.average/1e6)
 	c.latestDecreaseRate.update(float64(c.latestReceivedRate))
 	c.lastUpdate = c.now()
 
