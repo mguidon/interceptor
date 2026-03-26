@@ -178,10 +178,19 @@ func (c *rateController) increase(now time.Time) int {
 }
 
 func (c *rateController) decrease() int {
-	target := int(beta * float64(c.latestReceivedRate))
-	log.Printf("[GCC] DECREASE: recvRate=%.2f Mbps -> target=%.2f Mbps (beta=%.2f), decAvg=%.2f Mbps",
-		float64(c.latestReceivedRate)/1e6, float64(target)/1e6, beta, c.latestDecreaseRate.average/1e6)
-	c.latestDecreaseRate.update(float64(c.latestReceivedRate))
+	// Use the higher of target and latestReceivedRate as the reference for
+	// the decrease. When the encoder underproduces (static scenes, resolution
+	// tier caps, BANDWIDTH_FRACTION < 1.0), latestReceivedRate can be far
+	// below target, causing catastrophic drops (e.g. 50 → 7 Mbps).
+	ref := c.target
+	if c.latestReceivedRate > ref {
+		ref = c.latestReceivedRate
+	}
+	target := int(beta * float64(ref))
+	log.Printf("[GCC] DECREASE: ref=%.2f Mbps (target=%.2f, recvRate=%.2f) -> new=%.2f Mbps (beta=%.2f), decAvg=%.2f Mbps",
+		float64(ref)/1e6, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
+		float64(target)/1e6, beta, c.latestDecreaseRate.average/1e6)
+	c.latestDecreaseRate.update(float64(ref))
 	c.lastUpdate = c.now()
 
 	return target
