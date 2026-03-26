@@ -114,12 +114,13 @@ func (c *rateController) onDelayStats(ds DelayStats) {
 		if now.Sub(c.lastLog) > logInterval {
 			mode := "EXPONENTIAL"
 			if c.latestDecreaseRate.average > 0 &&
-				float64(c.target) > c.latestDecreaseRate.average-3*c.latestDecreaseRate.stdDeviation &&
-				float64(c.target) < c.latestDecreaseRate.average+3*c.latestDecreaseRate.stdDeviation {
+				float64(c.target) > c.latestDecreaseRate.average-c.latestDecreaseRate.stdDeviation &&
+				float64(c.target) < c.latestDecreaseRate.average+c.latestDecreaseRate.stdDeviation {
 				mode = "ADDITIVE"
 			}
-			log.Printf("[GCC] %s target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f Mbps",
-				mode, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6, c.latestDecreaseRate.average/1e6)
+			log.Printf("[GCC] %s target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f±%.2f Mbps",
+				mode, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
+				c.latestDecreaseRate.average/1e6, c.latestDecreaseRate.stdDeviation/1e6)
 			c.lastLog = now
 		}
 		next = DelayStats{
@@ -152,8 +153,8 @@ func (c *rateController) onDelayStats(ds DelayStats) {
 
 func (c *rateController) increase(now time.Time) int {
 	if c.latestDecreaseRate.average > 0 &&
-		float64(c.target) > c.latestDecreaseRate.average-3*c.latestDecreaseRate.stdDeviation &&
-		float64(c.target) < c.latestDecreaseRate.average+3*c.latestDecreaseRate.stdDeviation {
+		float64(c.target) > c.latestDecreaseRate.average-c.latestDecreaseRate.stdDeviation &&
+		float64(c.target) < c.latestDecreaseRate.average+c.latestDecreaseRate.stdDeviation {
 		bitsPerFrame := float64(c.target) / 30.0
 		packetsPerFrame := math.Ceil(bitsPerFrame / (1200 * 8))
 		expectedPacketSizeBits := bitsPerFrame / packetsPerFrame
