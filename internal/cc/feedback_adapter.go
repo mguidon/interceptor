@@ -33,7 +33,12 @@ type FeedbackAdapter struct {
 
 // NewFeedbackAdapter returns a new FeedbackAdapter.
 func NewFeedbackAdapter() *FeedbackAdapter {
-	return &FeedbackAdapter{history: newFeedbackHistory(250)}
+	// History must be large enough to hold all in-flight packets between
+	// consecutive TWCC feedback reports (~100ms apart). At 50 Mbps with
+	// ~1200-byte packets that is ~5200 pps, so we need ≥520 entries.
+	// The original 250 caused packets to be evicted before feedback
+	// arrived, creating phantom "losses" in the loss controller.
+	return &FeedbackAdapter{history: newFeedbackHistory(5000)}
 }
 
 func (f *FeedbackAdapter) onSentRFC8888(ts time.Time, header *rtp.Header, size int) error {

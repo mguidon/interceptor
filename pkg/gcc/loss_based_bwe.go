@@ -82,17 +82,31 @@ func (e *lossBasedBandwidthEstimator) updateLossEstimate(results []cc.Acknowledg
 		return
 	}
 
+	// Count only genuine losses: packets the receiver explicitly marked as
+	// not received. Evicted history entries also have Arrival.IsZero() but
+	// can be distinguished because their Departure is also zero (they are
+	// zero-value Acknowledgment structs from slots that didn't match any
+	// history entry).
 	packetsLost := 0
+	packetsTotal := 0
 	for _, p := range results {
+		if p.Departure.IsZero() {
+			continue // evicted from history, not a real loss report
+		}
+		packetsTotal++
 		if p.Arrival.IsZero() {
 			packetsLost++
 		}
 	}
 
+	if packetsTotal == 0 {
+		return
+	}
+
 	e.lock.Lock()
 	defer e.lock.Unlock()
 
-	lossRatio := float64(packetsLost) / float64(len(results))
+	lossRatio := float64(packetsLost) / float64(packetsTotal)
 	e.averageLoss = e.average(time.Since(e.lastLossUpdate), e.averageLoss, lossRatio)
 	e.lastLossUpdate = time.Now()
 
@@ -104,13 +118,13 @@ func (e *lossBasedBandwidthEstimator) updateLossEstimate(results []cc.Acknowledg
 		e.lastIncrease = time.Now()
 		e.bitrate = clampInt(int(increaseFactor*float64(e.bitrate)), e.minBitrate, e.maxBitrate)
 		log.Printf("[GCC-LOSS] INCREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, pkts=%d, lost=%d)",
-			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, len(results), packetsLost)
+			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, packetsTotal, packetsLost)
 	} else if decreaseLoss > decreaseLossThreshold && time.Since(e.lastDecrease) > decreaseTimeThreshold {
 		old := e.bitrate
 		e.lastDecrease = time.Now()
 		e.bitrate = clampInt(int(float64(e.bitrate)*(1-0.5*decreaseLoss)), e.minBitrate, e.maxBitrate)
 		log.Printf("[GCC-LOSS] DECREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, decLoss=%.4f, pkts=%d, lost=%d)",
-			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, decreaseLoss, len(results), packetsLost)
+			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, decreaseLoss, packetsTotal, packetsLost)
 	}
 }
 
