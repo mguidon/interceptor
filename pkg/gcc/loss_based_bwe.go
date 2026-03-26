@@ -40,6 +40,7 @@ type lossBasedBandwidthEstimator struct {
 	lastLossUpdate time.Time
 	lastIncrease   time.Time
 	lastDecrease   time.Time
+	lastIncLog     time.Time
 	log            logging.LeveledLogger
 }
 
@@ -117,9 +118,10 @@ func (e *lossBasedBandwidthEstimator) updateLossEstimate(results []cc.Acknowledg
 		old := e.bitrate
 		e.lastIncrease = time.Now()
 		e.bitrate = clampInt(int(increaseFactor*float64(e.bitrate)), e.minBitrate, e.maxBitrate)
-		if e.bitrate != old {
+		if e.bitrate != old && time.Since(e.lastIncLog) > 2*time.Second {
 			log.Printf("[GCC-LOSS] INCREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, pkts=%d, lost=%d)",
 				float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, packetsTotal, packetsLost)
+			e.lastIncLog = time.Now()
 		}
 	} else if decreaseLoss > decreaseLossThreshold && time.Since(e.lastDecrease) > decreaseTimeThreshold {
 		old := e.bitrate
