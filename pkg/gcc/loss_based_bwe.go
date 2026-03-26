@@ -4,6 +4,7 @@
 package gcc
 
 import (
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -63,10 +64,15 @@ func (e *lossBasedBandwidthEstimator) getEstimate(wantedRate int) LossStats {
 	if e.bitrate <= 0 {
 		e.bitrate = clampInt(wantedRate, e.minBitrate, e.maxBitrate)
 	}
-	e.bitrate = min(wantedRate, e.bitrate)
+	// Return the minimum of wantedRate and internal estimate, but do NOT
+	// mutate e.bitrate. The loss controller must maintain its own independent
+	// estimate that is only updated by updateLossEstimate(). The original
+	// code permanently ratcheted down e.bitrate whenever the delay controller
+	// had a decrease event, preventing the loss estimate from recovering.
+	targetBitrate := min(wantedRate, e.bitrate)
 
 	return LossStats{
-		TargetBitrate: e.bitrate,
+		TargetBitrate: targetBitrate,
 		AverageLoss:   e.averageLoss,
 	}
 }
@@ -94,19 +100,20 @@ func (e *lossBasedBandwidthEstimator) updateLossEstimate(results []cc.Acknowledg
 	decreaseLoss := math.Min(e.averageLoss, lossRatio)
 
 	if increaseLoss < increaseLossThreshold && time.Since(e.lastIncrease) > increaseTimeThreshold {
-		e.log.Infof(
-			"loss controller increasing; averageLoss: %v, decreaseLoss: %v, increaseLoss: %v",
-			e.averageLoss, decreaseLoss, increaseLoss,
-		)
+		old := e.bitrate
 		e.lastIncrease = time.Now()
 		e.bitrate = clampInt(int(increaseFactor*float64(e.bitrate)), e.minBitrate, e.maxBitrate)
+		log.Printf("[GCC-LOSS] INCREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, lossRatio=%.4f, pkts=%d, lost=%d)",
+			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, lossRatio, len(results), packetsLost)
 	} else if decreaseLoss > decreaseLossThreshold && time.Since(e.lastDecrease) > decreaseTimeThreshold {
-		e.log.Infof(
-			"loss controller decreasing; averageLoss: %v, decreaseLoss: %v, increaseLoss: %v",
-			e.averageLoss, decreaseLoss, increaseLoss,
-		)
+		old := e.bitrate
 		e.lastDecrease = time.Now()
 		e.bitrate = clampInt(int(float64(e.bitrate)*(1-0.5*decreaseLoss)), e.minBitrate, e.maxBitrate)
+		log.Printf("[GCC-LOSS] DECREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, lossRatio=%.4f, decLoss=%.4f, pkts=%d, lost=%d)",
+			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, lossRatio, decreaseLoss, len(results), packetsLost)
+	} else if packetsLost > 0 {
+		log.Printf("[GCC-LOSS] HOLD: bitrate=%.2f Mbps (avgLoss=%.4f, lossRatio=%.4f, incLoss=%.4f, decLoss=%.4f, pkts=%d, lost=%d)",
+			float64(e.bitrate)/1e6, e.averageLoss, lossRatio, increaseLoss, decreaseLoss, len(results), packetsLost)
 	}
 }
 
