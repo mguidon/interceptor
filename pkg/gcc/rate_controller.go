@@ -13,6 +13,7 @@ import (
 const (
 	decreaseEMAAlpha = 0.95
 	beta             = 0.85
+	logInterval      = 2 * time.Second
 )
 
 type rateController struct {
@@ -29,6 +30,7 @@ type rateController struct {
 	target             int
 	lastUpdate         time.Time
 	lastState          state
+	lastLog            time.Time
 	latestRTT          time.Duration
 	latestReceivedRate int
 	latestDecreaseRate *exponentialMovingAverage
@@ -109,6 +111,17 @@ func (c *rateController) onDelayStats(ds DelayStats) {
 		// should never occur due to check above, but makes the linter happy
 	case stateIncrease:
 		c.target = clampInt(c.increase(now), c.minBitrate, c.maxBitrate)
+		if now.Sub(c.lastLog) > logInterval {
+			mode := "EXPONENTIAL"
+			if c.latestDecreaseRate.average > 0 &&
+				float64(c.target) > c.latestDecreaseRate.average-3*c.latestDecreaseRate.stdDeviation &&
+				float64(c.target) < c.latestDecreaseRate.average+3*c.latestDecreaseRate.stdDeviation {
+				mode = "ADDITIVE"
+			}
+			log.Printf("[GCC] %s target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f Mbps",
+				mode, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6, c.latestDecreaseRate.average/1e6)
+			c.lastLog = now
+		}
 		next = DelayStats{
 			Measurement:      c.delayStats.Measurement,
 			Estimate:         c.delayStats.Estimate,
@@ -150,17 +163,10 @@ func (c *rateController) increase(now time.Time) int {
 		increase := int(math.Max(1000.0, alpha*expectedPacketSizeBits))
 		c.lastUpdate = now
 
-		log.Printf("[GCC] ADDITIVE increase: target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f Mbps, decStd=%.2f Mbps, step=+%d bps",
-			float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
-			c.latestDecreaseRate.average/1e6, c.latestDecreaseRate.stdDeviation/1e6, increase)
-
 		return int(math.Min(float64(c.target+increase), 1.5*float64(c.target)))
 	}
 	eta := math.Pow(1.08, math.Min(float64(now.Sub(c.lastUpdate).Milliseconds())/1000, 1.0))
 	c.lastUpdate = now
-
-	log.Printf("[GCC] EXPONENTIAL increase: target=%.2f Mbps, recvRate=%.2f Mbps, eta=%.4f, decAvg=%.2f Mbps",
-		float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6, eta, c.latestDecreaseRate.average/1e6)
 
 	rate := int(eta * float64(c.target))
 
