@@ -4,7 +4,7 @@
 package gcc
 
 import (
-	"log"
+	// "log"
 	"math"
 	"sync"
 	"time"
@@ -115,20 +115,20 @@ func (e *lossBasedBandwidthEstimator) updateLossEstimate(results []cc.Acknowledg
 	decreaseLoss := math.Min(e.averageLoss, lossRatio)
 
 	if increaseLoss < increaseLossThreshold && time.Since(e.lastIncrease) > increaseTimeThreshold {
-		old := e.bitrate
+		// old := e.bitrate
 		e.lastIncrease = time.Now()
 		e.bitrate = clampInt(int(increaseFactor*float64(e.bitrate)), e.minBitrate, e.maxBitrate)
-		if e.bitrate != old && time.Since(e.lastIncLog) > 2*time.Second {
-			log.Printf("[GCC-LOSS] INCREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, pkts=%d, lost=%d)",
-				float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, packetsTotal, packetsLost)
-			e.lastIncLog = time.Now()
-		}
+		// if e.bitrate != old && time.Since(e.lastIncLog) > 30*time.Second {
+		// 	log.Printf("[GCC-LOSS] INCREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, pkts=%d, lost=%d)",
+		// 		float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, packetsTotal, packetsLost)
+		// 	e.lastIncLog = time.Now()
+		// }
 	} else if decreaseLoss > decreaseLossThreshold && time.Since(e.lastDecrease) > decreaseTimeThreshold {
-		old := e.bitrate
+		// old := e.bitrate
 		e.lastDecrease = time.Now()
 		e.bitrate = clampInt(int(float64(e.bitrate)*(1-0.5*decreaseLoss)), e.minBitrate, e.maxBitrate)
-		log.Printf("[GCC-LOSS] DECREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, decLoss=%.4f, pkts=%d, lost=%d)",
-			float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, decreaseLoss, packetsTotal, packetsLost)
+		// log.Printf("[GCC-LOSS] DECREASE: %.2f -> %.2f Mbps (avgLoss=%.4f, decLoss=%.4f, pkts=%d, lost=%d)",
+		// 	float64(old)/1e6, float64(e.bitrate)/1e6, e.averageLoss, decreaseLoss, packetsTotal, packetsLost)
 	}
 }
 

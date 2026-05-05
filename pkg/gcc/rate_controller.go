@@ -4,7 +4,7 @@
 package gcc
 
 import (
-	"log"
+	// "log"
 	"math"
 	"sync"
 	"time"
@@ -13,7 +13,7 @@ import (
 const (
 	decreaseEMAAlpha = 0.95
 	beta             = 0.85
-	logInterval      = 2 * time.Second
+	// logInterval      = 30 * time.Second
 )
 
 type rateController struct {
@@ -111,18 +111,18 @@ func (c *rateController) onDelayStats(ds DelayStats) {
 		// should never occur due to check above, but makes the linter happy
 	case stateIncrease:
 		c.target = clampInt(c.increase(now), c.minBitrate, c.maxBitrate)
-		if now.Sub(c.lastLog) > logInterval {
-			mode := "EXPONENTIAL"
-			if c.latestDecreaseRate.average > 0 &&
-				float64(c.target) > c.latestDecreaseRate.average-c.latestDecreaseRate.stdDeviation &&
-				float64(c.target) < c.latestDecreaseRate.average+c.latestDecreaseRate.stdDeviation {
-				mode = "ADDITIVE"
-			}
-			log.Printf("[GCC] %s target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f±%.2f Mbps",
-				mode, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
-				c.latestDecreaseRate.average/1e6, c.latestDecreaseRate.stdDeviation/1e6)
-			c.lastLog = now
-		}
+		// if now.Sub(c.lastLog) > logInterval {
+		// 	mode := "EXPONENTIAL"
+		// 	if c.latestDecreaseRate.average > 0 &&
+		// 		float64(c.target) > c.latestDecreaseRate.average-c.latestDecreaseRate.stdDeviation &&
+		// 		float64(c.target) < c.latestDecreaseRate.average+c.latestDecreaseRate.stdDeviation {
+		// 		mode = "ADDITIVE"
+		// 	}
+		// 	log.Printf("[GCC] %s target=%.2f Mbps, recvRate=%.2f Mbps, decAvg=%.2f±%.2f Mbps",
+		// 		mode, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
+		// 		c.latestDecreaseRate.average/1e6, c.latestDecreaseRate.stdDeviation/1e6)
+		// 	c.lastLog = now
+		// }
 		next = DelayStats{
 			Measurement:      c.delayStats.Measurement,
 			Estimate:         c.delayStats.Estimate,
@@ -194,9 +194,9 @@ func (c *rateController) decrease() int {
 		ref = c.latestReceivedRate
 	}
 	target := int(beta * float64(ref))
-	log.Printf("[GCC] DECREASE: ref=%.2f Mbps (target=%.2f, recvRate=%.2f) -> new=%.2f Mbps (beta=%.2f), decAvg=%.2f Mbps",
-		float64(ref)/1e6, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
-		float64(target)/1e6, beta, c.latestDecreaseRate.average/1e6)
+	// log.Printf("[GCC] DECREASE: ref=%.2f Mbps (target=%.2f, recvRate=%.2f) -> new=%.2f Mbps (beta=%.2f), decAvg=%.2f Mbps",
+	// 	float64(ref)/1e6, float64(c.target)/1e6, float64(c.latestReceivedRate)/1e6,
+	// 	float64(target)/1e6, beta, c.latestDecreaseRate.average/1e6)
 	c.latestDecreaseRate.update(float64(ref))
 	c.lastUpdate = c.now()
 
